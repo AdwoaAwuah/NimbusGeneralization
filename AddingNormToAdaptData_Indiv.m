@@ -10,33 +10,82 @@
 % 4) Compute bias removed stride by stride norm
 % 5) Saving params file 
 
-clear;clc; close all
+%clear;clc; close all
 %% 1: load and prep data
-subID= 'BATR01';
-load([subID, 'params.mat'])
+subID1= 'NTS_01';
+load([subID1, 'params.mat'])
 
+subID = {[subID1, 'params.mat']}; %Change SubID to a cell array to avoid brace indexing error when creating a group
 
-
+%
 %% 2:  EMG normalization of baseline
+group=adaptationData.createGroupAdaptData(subID); % create group adaptation data from the subject.
 
 
 muscleOrder={'TA', 'PER', 'SOL', 'LG', 'MG', 'BF', 'SEMB', 'SEMT', 'VM', 'VL', 'RF', 'TFL', 'GLU', 'HIP'};
 % muscleOrder={'TA'};
-n_muscles = length(muscleOrder);
+n_muscles = length(muscleOrder); %the number of muscles to plot
 
-ep=defineEpochs_regressionYA('nanmean');
-refEp= defineReferenceEpoch('TM base',ep);
+ ep=defineEpochs_regressionYA('nanmean'); % the epochs of interest
+%  ep=defineRegressorsNimbusFeedback('nanmean');
+ 
+refEp= defineReferenceEpoch('TM base',ep); %define reference or baseline for the rest of the epochs
 
+epochOfInterest={'Adaptation','Adaptation_{early}','OG base'}; % This line chooses the epochs that want to get data from
 
-newLabelPrefix = defineMuscleList(muscleOrder);
+newLabelPrefix = defineMuscleList(muscleOrder); 
 
-adaptData = adaptData.normalizeToBaselineEpoch(newLabelPrefix,refEp);
+%adaptData = adaptData.normalizeToBaselineEpoch(newLabelPrefix,refEp); %normalizing the data
 
-ll=adaptData.data.getLabelsThatMatch('^Norm');
+group = group.normalizeToBaselineEpoch(newLabelPrefix,refEp);%commented above when changed to "group" 
+
+%ll=adaptData.data.getLabelsThatMatch('^Norm');
+
+ll=group.adaptData{1}.data.getLabelsThatMatch('^Norm');%changed to this
+
 l2=regexprep(regexprep(ll,'^Norm',''),'_s','s');
-adaptData=adaptData.renameParams(ll,l2);
+
+%adaptData=adaptData.renameParams(ll,l2);
+group=group.renameParams(ll,l2);
+
 newLabelPrefix = regexprep(newLabelPrefix,'_s','s');
 
+%
+%
+
+%Plotting Checkerboards
+
+% fh=figure('Units','Normalized','OuterPosition',[0 0 1 1]);
+% ph=tight_subplot(1,length(epochOfInterest),[.03 .005],.04,.04);
+% 
+% flip=1; %1 for individual leg analysis and 2 for asymmetric (R-L)
+% if flip==1
+%     n=2;
+%     method='IndvLegs';
+% else
+%     n=1;
+%     method='Asym';
+% end
+% 
+% removeBias=1; %Flag for bias removal This can be turned on to remove the bias before model fitting 
+% 
+% 
+% for l=1:length(epochOfInterest)
+% 
+%     ep2=defineReferenceEpoch(epochOfInterest{l},ep);
+% 
+% 
+%   if removeBias == 1
+% 
+% 
+%     [~,~,~,Datacheck{l}]=group.plotCheckerboards(newLabelPrefix,ep2,fh,ph(1,l),refEp,flip);
+%      
+%   end
+% 
+% end
+
+% Removing bad muscles
+   group= RemovingBadMuscleToSubj(group); %Removing bad muscles.
 
 %% 2. Norm Stride by Stride
 
@@ -45,8 +94,8 @@ data=[];
 temp=[];
 aux1=[];
 
-Subj = adaptData; %Dummy variable
-
+Subj = group.adaptData{1}; %Dummy variable
+%Subj = adaptData
 
 for i = 2:numel(newLabelPrefix) %loop on the all the muscles
     
@@ -72,34 +121,42 @@ temp(:,2)=vecnorm(dataAsym'); % getting norm asymmetry value
 
 %         aux1=find(temp(:,1)>50);
 %         temp(aux1,:)=nan;
+
 adaptData.data=adaptData.data.appendData(temp,{'NormEMG','NormEMGasym'},...
-    {'Norm of all the muscles','Norm asym of all the muscles'}); % Adding parameter for to adaptData
+     {'Norm of all the muscles','Norm asym of all the muscles'}); % Adding parameter for to adaptData
+% 
+% group.adaptData{1}=group.adaptData{1}.appendData(temp,{'NormEMG','NormEMGasym'},...
+%     {'Norm of all the muscles','Norm asym of all the muscles'}); % Adding parameter for to adaptData
 
 %% 2. Norm Stride by Stride with baseline remove 
 
-ep=defineEpochs_regressionYA('nanmean'); %Define epochs of interest 
+ ep=defineEpochs_regressionYA('nanmean');
+% ep=defineRegressorsNimbusFeedback('nanmean'); %Define epochs of interest 
 refEpTR= defineReferenceEpoch('TM base',ep); % defining  Treadmill baseline 
-refEpOG= defineReferenceEpoch('OG base',ep);  % defining  overgounds baseline 
+refEpOG= defineReferenceEpoch('OG base',ep);  % defining  overgrounds baseline 
 
 padWithNaNFlag=true; % Fill with Nan in case that we dont have enought strides
 
-[OGref]=adaptData.getPrefixedEpochData(newLabelPrefix,refEpOG,padWithNaNFlag); % getting overgound baseline data
+%[OGref]=adaptData.getPrefixedEpochData(newLabelPrefix,refEpOG,padWithNaNFlag); % getting overgound baseline data
+[OGref]=group.adaptData{1}.getPrefixedEpochData(newLabelPrefix,refEpOG,padWithNaNFlag);
 OGref=squeeze(OGref); 
 OGrefasym=OGref-fftshift(OGref,1); % getting OG base for the asymmetry parameter 
 OGrefasym=OGref(1:size(OGref,1)/2,:,:);
 
-[TRref]=adaptData.getPrefixedEpochData(newLabelPrefix,refEpTR,padWithNaNFlag); % getting treadmill baseline data
+%[TRref]=adaptData.getPrefixedEpochData(newLabelPrefix,refEpTR,padWithNaNFlag); % getting treadmill baseline data
+[TRref]=group.adaptData{1}.getPrefixedEpochData(newLabelPrefix,refEpTR,padWithNaNFlag); 
+
 TRref=squeeze(TRref);
 TRrefasym=TRref-fftshift(TRref,1);  % getting TM base for the asymmetry parameter 
 TRrefasym=TRref(1:size(TRref,1)/2,:,:);
 
-%Defining needede dumy variables 
+%Defining needed dummy variables 
 data=[];
 temp=[];
 data3=[];
 data3asym=[];
 
-Subj = adaptData;
+Subj = group.adaptData{1};
 
 
 for i = 1:numel(newLabelPrefix) %loop on the all the muscles
@@ -143,7 +200,7 @@ for t=1:length(tt) % loop on all the trials
         aux2=data(Idx,:)';
         data2= aux2-TRref(:,1);
         
-        aux3=aux2-fftshift(aux2,1);% For asymmetry measure sustract the second part of the matrix
+        aux3=aux2-fftshift(aux2,1);% For asymmetry measure subtract the second part of the matrix
         aux3=aux3(1:size(aux3,1)/2,:,:);
         
         data2asym=aux3-TRrefasym(:,1);
@@ -158,21 +215,39 @@ for t=1:length(tt) % loop on all the trials
 end
 
 data3(isnan(data3))=0;
-data3asym(isnan(data3asym))=0;
+data3asym(isnan(data3asym))=0; %converting nans to 0
 temp(:,1)=vecnorm(data3);
 temp(:,2)=vecnorm(data3asym);
 %         aux1=find(temp(:,1)>50);
 %         temp(aux1,:)=nan;
 aux1=adaptData.data.Data;
 adaptData.data=adaptData.data.appendData(temp,{'UnBiasNormEMG','UnBiasNormEMGasym'},...
-    {'Context specifci unbais Norm of all the muscles','Context specifci unbais Norm asym of all the muscles'});  % Adding parameter for to adaptData
+    {'Context specific unbais Norm of all the muscles','Context specific unbias Norm asym of all the muscles'});  % Adding parameter for to adaptData
 
 %% Plot some of the parameters 
 
-params= {'NormEMG','UnBiasNormEMG','stepLengthAsym'};
+ params= {'UnBiasNormEMG'};
+%  params= {'NormEMG'};
 % adaptData.plotAvgTimeCourse(adaptData,params)
-adaptData.plotAvgTimeCourse(adaptData,params,adaptData.metaData.conditionName,5)
 
+conditions={'OG base','Adaptation','Post 1'};
+%  conditions={'Post 1'};
+trialMarkerFlag=0; %1 if you want to separete the time course by trial, 0 to separate by condition 
+indivFlag=0; %0 we are plotting one subject
+indivSubs=0; %0 we are plotting one subject
+colorOrder=[]; %Let the function take care of this at least you wanted in a specific set of color then by my guess and add the list here
+biofeedback= 0; % At least that you are providing with biofeedback to the subject
+removeBiasFlag=1; %if you want to remove bias 
+
+figure;
+adaptData.plotAvgTimeCourse(adaptData,params,conditions,5,trialMarkerFlag,indivFlag,indivSubs,colorOrder,biofeedback,removeBiasFlag)
+
+
+hold on;
+
+
+yline(0,LineWidth=2)
+%group.adaptData{1}.plotAvgTimeCourse(group.adaptData{1},params,adaptData.metaData.conditionName,5)
 %% Save params file 
 
-% save([subID 'paramsEMGnorm.mat'],'adaptData','-v7.3')
+   save([subID1 'paramsEMGnorm.mat'],'group','adaptData')
